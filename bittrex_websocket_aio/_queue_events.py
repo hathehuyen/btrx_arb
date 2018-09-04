@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# bittrex_websocket/_queue_events.py
+# bittrex_websocket_aio/_queue_events.py
 # Stanislav Lazarov
 
 from .constants import EventTypes
@@ -51,25 +51,3 @@ class CloseEvent(Event):
 
     def __init__(self):
         self.type = EventTypes.CLOSE
-
-
-class ConfirmEvent(Event):
-    """
-    Handles the event of confirm the order book.
-    """
-
-    def __init__(self, ticker, order_nounces):
-        self.type = EventTypes.CONFIRM_OB
-        self.ticker = ticker
-        self.order_nounces = order_nounces
-
-
-class SyncEvent(Event):
-    """
-    Handles the event of syncing the order book.
-    """
-
-    def __init__(self, ticker, order_nounces):
-        self.type = EventTypes.SYNC_OB
-        self.ticker = ticker
-        self.order_nounces = order_nounces

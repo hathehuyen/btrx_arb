@@ -1,16 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# bittrex_websocket/_abc.py
+# bittrex_websocket_aio/_abc.py
 # Stanislav Lazarov
 #
 # Official Bittrex documentation: https://github.com/Bittrex/beta
 
-from abc import ABCMeta, abstractmethod
+from abc import ABC, abstractmethod
 
 
-class WebSocket(object):
-    __metaclass__ = ABCMeta
+class WebSocket(ABC):
 
     @abstractmethod
     def subscribe_to_exchange_deltas(self, tickers):
@@ -198,13 +197,13 @@ class WebSocket(object):
         """
 
     @abstractmethod
-    def on_public(self, msg):
+    async def on_public(self, msg):
         """
         Streams all incoming messages from public delta channels.
         """
 
     @abstractmethod
-    def on_private(self, msg):
+    async def on_private(self, msg):
         """
         Streams all incoming messages from private delta channels.
         """

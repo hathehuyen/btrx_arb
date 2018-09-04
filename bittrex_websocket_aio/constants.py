@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-# bittrex_websocket/constants.py
+# bittrex_websocket_aio/constants.py
 # Stanislav Lazarov
 
 
@@ -17,8 +17,6 @@ class EventTypes(Constant):
     SUBSCRIBE = 'SUBSCRIBE'
     CLOSE = 'CLOSE'
     RECONNECT = 'RECONNECT'
-    CONFIRM_OB = 'CONFIRM_OB'
-    SYNC_OB = 'SYNC_OB'
 
 
 class BittrexParameters(Constant):
@@ -31,14 +29,9 @@ class BittrexParameters(Constant):
     SUMMARY_DELTA_LITE = 'uL'
     BALANCE_DELTA = 'uB'
     ORDER_DELTA = 'uO'
-    # Retry
-    CONNECTION_TIMEOUT = 10
-    RETRY_TIMEOUT = 5
-    MAX_RETRIES = None
 
 
 class BittrexMethods(Constant):
-    # Public methods
     SUBSCRIBE_TO_EXCHANGE_DELTAS = 'SubscribeToExchangeDeltas'
     SUBSCRIBE_TO_SUMMARY_DELTAS = 'SubscribeToSummaryDeltas'
     SUBSCRIBE_TO_SUMMARY_LITE_DELTAS = 'SubscribeToSummaryLiteDeltas'
@@ -50,19 +43,7 @@ class BittrexMethods(Constant):
 
 class ErrorMessages(Constant):
     INVALID_TICKER_INPUT = 'Tickers must be submitted as a list.'
-    UNHANDLED_EXCEPTION = '\nUnhandled {}.' \
-                          '\nAuto-reconnection is disabled for unhandled exceptions.' \
-                          '\nReport to https://github.com/slazarov/python-bittrex-websocket.'
-    CONNECTION_TIMEOUTED = 'Connection timeout after {} seconds. Sending a reconnection signal.'
-
-
-class InfoMessages(Constant):
-    SUCCESSFUL_DISCONNECT = 'Bittrex connection successfully closed.'
-    RECONNECTION_COUNT_FINITE = 'Previous reconnection failed. Retrying in {} seconds. Reconnection attempt {} out of {}.'
-    RECONNECTION_COUNT_INFINITE = 'Previous reconnection failed. Retrying in {} seconds. Reconnection attempt {}.'
 
 
 class OtherConstants(Constant):
     CF_SESSION_TYPE = '<class \'cfscrape.CloudflareScraper\'>'
-    SOCKET_CONNECTION_THREAD = 'SocketConnectionThread'
-    SIGNALR_LISTENER_THREAD = 'SignalRListenerThread'

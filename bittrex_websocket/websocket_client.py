@@ -4,42 +4,69 @@
 # bittrex_websocket/websocket_client.py
 # Stanislav Lazarov
 
+from ._signalr import Connection
 import logging
 from ._logger import add_stream_logger, remove_stream_logger
 from threading import Thread
 from ._queue_events import *
-from .constants import EventTypes, BittrexParameters, BittrexMethods, ErrorMessages, OtherConstants
-from ._auxiliary import process_message, create_signature, BittrexConnection
+from .constants import EventTypes, BittrexParameters, BittrexMethods, ErrorMessages, InfoMessages, OtherConstants
+from ._auxiliary import process_message, create_signature, clear_queue, identify_payload, BittrexConnection
 from ._abc import WebSocket
-from queue import Queue
-from ._exceptions import *
-from signalr_aio import Connection
-
 
 try:
     from cfscrape import create_scraper as Session
 except ImportError:
     from requests import Session
+from time import sleep, time
+
+try:
+    from Queue import Queue
+except ImportError:
+    from queue import Queue
+from events import Events
+from ._exceptions import *
 
 logger = logging.getLogger(__name__)
 
 
 class BittrexSocket(WebSocket):
 
-    def __init__(self, url=None):
+    def __init__(self, url=None, retry_timeout=None, max_retries=None):
+        """
+        :param url: Custom connection url
+        :type url: str or None
+        :param retry_timeout: Seconds between connection retries (DEFAULT = 10)
+        :type retry_timeout: int
+        :param max_retries: Maximum retries before quiting
+        :type max_retries: int
+        """
+        self.url = BittrexParameters.URL if url is None else url
+        self.retry_timeout = BittrexParameters.RETRY_TIMEOUT if retry_timeout is None else retry_timeout
+        self.max_retries = BittrexParameters.MAX_RETRIES if max_retries is None else max_retries
+        self.retry_fail = 0
+        self.last_retry = None
         self.control_queue = None
         self.invokes = []
         self.tickers = None
         self.connection = None
         self.threads = []
         self.credentials = None
-        self.url = BittrexParameters.URL if url is None else url
+        self._on_public_callback = None
+        self._on_private_callback = None
+        self._assign_callbacks()
         self._start_main_thread()
+
+    def _assign_callbacks(self):
+        self._on_public_callback = Events()
+        self._on_public_callback.on_change += self.on_public
+        self._on_private_callback = Events()
+        self._on_private_callback.on_change += self.on_private
 
     def _start_main_thread(self):
         self.control_queue = Queue()
         self.control_queue.put(ConnectEvent())
-        thread = Thread(target=self.control_queue_handler, daemon=True, name='ControlQueueThread')
+        thread = Thread(target=self.control_queue_handler, name='ControlQueueThread')
+        thread.daemon = True
         self.threads.append(thread)
         thread.start()
 
@@ -50,7 +77,7 @@ class BittrexSocket(WebSocket):
                 if event.type == EventTypes.CONNECT:
                     self._handle_connect()
                 elif event.type == EventTypes.SUBSCRIBE:
-                    self._handle_subscribe(event.invoke, event.payload)
+                    self._handle_subscribe(event)
                 elif event.type == EventTypes.RECONNECT:
                     self._handle_reconnect(event.error_message)
                 elif event.type == EventTypes.CLOSE:
@@ -59,6 +86,11 @@ class BittrexSocket(WebSocket):
                 self.control_queue.task_done()
 
     def _handle_connect(self):
+        if self.last_retry is not None and time() - self.last_retry >= 60:
+            logger.debug('Last reconnection was more than 60 seconds ago. Resetting retry counter.')
+            self.retry_fail = 0
+        else:
+            self.last_retry = time()
         connection = Connection(self.url, Session())
         hub = connection.register_hub(BittrexParameters.HUB)
         connection.received += self._on_debug
@@ -69,53 +101,19 @@ class BittrexSocket(WebSocket):
         hub.client.on(BittrexParameters.BALANCE_DELTA, self._on_private)
         hub.client.on(BittrexParameters.ORDER_DELTA, self._on_private)
         self.connection = BittrexConnection(connection, hub)
-        thread = Thread(target=self._connection_handler, daemon=True, name='SocketConnectionThread')
+        thread = Thread(target=self._connection_handler, name=OtherConstants.SOCKET_CONNECTION_THREAD)
+        thread.daemon = True
         self.threads.append(thread)
         thread.start()
 
-    def _connection_handler(self):
-        if str(type(self.connection.conn.session)) == OtherConstants.CF_SESSION_TYPE:
-            logger.info('Establishing connection to Bittrex through {}.'.format(self.url))
-            logger.info('cfscrape detected, using a cfscrape session instead of requests.')
-        else:
-            logger.info('Establishing connection to Bittrex through {}.'.format(self.url))
-        try:
-            self.connection.conn.start()
-        except ConnectionClosed as e:
-            if e.code == 1000:
-                logger.info('Bittrex connection successfully closed.')
-            elif e.code == 1006:
-                event = ReconnectEvent(e.args[0])
-                self.control_queue.put(event)
-        except ConnectionError as e:
-            raise ConnectionError(e)
-        except InvalidStatusCode as e:
-            message = "Status code not 101: {}".format(e.status_code)
-            event = ReconnectEvent(message)
-            self.control_queue.put(event)
-
-    def _handle_subscribe(self, invoke, payload):
-        if invoke in [BittrexMethods.SUBSCRIBE_TO_EXCHANGE_DELTAS, BittrexMethods.QUERY_EXCHANGE_STATE]:
-            for ticker in payload[0]:
-                self.invokes.append({'invoke': invoke, 'ticker': ticker})
-                self.connection.corehub.server.invoke(invoke, ticker)
-                logger.info('Successfully subscribed to [{}] for [{}].'.format(invoke, ticker))
-        elif invoke == BittrexMethods.GET_AUTH_CONTENT:
-            self.connection.corehub.server.invoke(invoke, payload[0])
-            self.invokes.append({'invoke': invoke, 'ticker': payload[0]})
-            logger.info('Retrieving authentication challenge.')
-        elif invoke == BittrexMethods.AUTHENTICATE:
-            self.connection.corehub.server.invoke(invoke, payload[0], payload[1])
-            logger.info('Challenge retrieved. Sending authentication. Awaiting messages...')
-            # No need to append invoke list, because AUTHENTICATE is called from successful GET_AUTH_CONTENT.
-        else:
-            self.invokes.append({'invoke': invoke, 'ticker': None})
-            self.connection.corehub.server.invoke(invoke)
-            logger.info('Successfully invoked [{}].'.format(invoke))
-
     def _handle_reconnect(self, error_message):
-        logger.error('{}.'.format(error_message))
-        logger.error('Initiating reconnection procedure')
+        if error_message is not None:
+            logger.error('{}.'.format(error_message))
+        logger.debug('Initiating reconnection procedure.')
+        for i, thread in enumerate(self.threads):
+            if thread.name == OtherConstants.SOCKET_CONNECTION_THREAD:
+                thread.join()
+                self.threads.pop(i)
         events = []
         for item in self.invokes:
             event = SubscribeEvent(item['invoke'], [item['ticker']])
@@ -123,9 +121,106 @@ class BittrexSocket(WebSocket):
         # Reset previous connection
         self.invokes, self.connection = [], None
         # Restart
-        self.control_queue.put(ConnectEvent())
-        for event in events:
-            self.control_queue.put(event)
+        if 0 <= self.retry_fail <= self.retry_fail + 1 if self.max_retries is None else self.max_retries:
+            # Don't delay the first reconnection.
+            if BittrexParameters.MAX_RETRIES is not None:
+                logger.debug(InfoMessages.RECONNECTION_COUNT_FINITE.format(self.retry_timeout, self.retry_fail + 1,
+                                                                           BittrexParameters.MAX_RETRIES))
+            else:
+                logger.debug(InfoMessages.RECONNECTION_COUNT_INFINITE.format(self.retry_timeout, self.retry_fail + 1))
+            if self.retry_fail > 0:
+                sleep(self.retry_timeout)
+            self.retry_fail += 1
+            self.control_queue.put(ConnectEvent())
+            for event in events:
+                self.control_queue.put(event)
+        else:
+            logger.debug('Maximum reconnection retries reached. Closing the socket instance.')
+            self.control_queue.put(CloseEvent())
+
+    def _connection_handler(self):
+        def _get_err_msg(exception):
+            error_message = 'Exception = {}, Message = <{}>'.format(type(exception), exception)
+            return error_message
+
+        if str(type(Session())) == OtherConstants.CF_SESSION_TYPE:
+            logger.info('Establishing connection to Bittrex through {}.'.format(self.url))
+            logger.info('cfscrape detected, will try to bypass Cloudflare if enabled.')
+        else:
+            logger.info('Establishing connection to Bittrex through {}.'.format(self.url))
+        try:
+            self.connection.conn.start()
+        except TimeoutError as e:
+            self.control_queue.put(ReconnectEvent(_get_err_msg(e)))
+        except WebSocketConnectionClosedByUser:
+            logger.info(InfoMessages.SUCCESSFUL_DISCONNECT)
+        except WebSocketConnectionClosedException as e:
+            self.control_queue.put(ReconnectEvent(_get_err_msg(e)))
+        except TimeoutErrorUrlLib as e:
+            self.control_queue.put(ReconnectEvent(_get_err_msg(e)))
+        except ConnectionError:
+            pass
+            # Commenting it for the time being. It should be handled in _handle_subscribe.
+            # event = ReconnectEvent(None)
+            # self.control_queue.put(event)
+        except Exception as e:
+            logger.error(ErrorMessages.UNHANDLED_EXCEPTION.format(_get_err_msg(e)))
+            self.disconnect()
+            # event = ReconnectEvent(None)
+            # self.control_queue.put(event)
+
+    def _handle_subscribe(self, sub_event):
+        invoke, payload = sub_event.invoke, sub_event.payload
+        i = 0
+        while self.connection.conn.started is False:
+            sleep(1)
+            i += 1
+            if i == BittrexParameters.CONNECTION_TIMEOUT:
+                logger.error(ErrorMessages.CONNECTION_TIMEOUTED.format(BittrexParameters.CONNECTION_TIMEOUT))
+                self.invokes.append({'invoke': invoke, 'ticker': identify_payload(payload)})
+                for event in self.control_queue.queue:
+                    self.invokes.append({'invoke': event.invoke, 'ticker': identify_payload(event.payload)})
+                clear_queue(self.control_queue)
+                self.connection.conn.force_close()
+                self.control_queue.put(ReconnectEvent(None))
+                return
+        else:
+            if self._handle_subscribe_for_ticker(invoke, payload):
+                return True
+            elif invoke == BittrexMethods.GET_AUTH_CONTENT:
+                # The reconnection procedures puts the key in a tuple and it fails, hence the little quick fix.
+                key = identify_payload(payload)
+                self.connection.corehub.server.invoke(invoke, key)
+                self.invokes.append({'invoke': invoke, 'ticker': key})
+                logger.info('Retrieving authentication challenge.')
+            elif invoke == BittrexMethods.AUTHENTICATE:
+                key = payload[0]
+                challenge = payload[1]
+                if type(key) is not str:
+                    logger.error('API key is not transferred. Private authentication will fail.'
+                                 '\nAPI key type is {}'
+                                 '\nReport to https://github.com/slazarov/python-bittrex-websocket.'.format(type(key)))
+                if type(challenge) is not str:
+                    logger.error('Challenge is not transferred. Private authentication will fail.'
+                                 '\nChallenge type is {}'
+                                 '\nReport to https://github.com/slazarov/python-bittrex-websocket.'.format(
+                        type(challenge)))
+                self.connection.corehub.server.invoke(invoke, key, challenge)
+                logger.info('Challenge retrieved. Sending authentication. Awaiting messages...')
+                # No need to append invoke list, because AUTHENTICATE is called from successful GET_AUTH_CONTENT.
+            else:
+                self.invokes.append({'invoke': invoke, 'ticker': None})
+                self.connection.corehub.server.invoke(invoke)
+                logger.info('Successfully invoked [{}].'.format(invoke))
+
+    def _handle_subscribe_for_ticker(self, invoke, payload):
+        if invoke in [BittrexMethods.SUBSCRIBE_TO_EXCHANGE_DELTAS, BittrexMethods.QUERY_EXCHANGE_STATE]:
+            for ticker in payload[0]:
+                self.invokes.append({'invoke': invoke, 'ticker': ticker})
+                self.connection.corehub.server.invoke(invoke, ticker)
+                logger.info('Successfully subscribed to [{}] for [{}].'.format(invoke, ticker))
+            return True
+        return False
 
     # ==============
     # Public Methods
@@ -169,13 +264,19 @@ class BittrexSocket(WebSocket):
 
     def disconnect(self):
         self.control_queue.put(CloseEvent())
+        try:
+            [thread.join() for thread in reversed(self.threads)]
+        except RuntimeError:
+            # If disconnect is called within, the ControlQueueThread will try to join itself
+            # RuntimeError: cannot join current thread
+            pass
 
     # =======================
     # Private Channel Methods
     # =======================
 
-    async def _on_public(self, args):
-        msg = await process_message(args[0])
+    def _on_public(self, args):
+        msg = process_message(args)
         if 'D' in msg:
             if len(msg['D'][0]) > 3:
                 msg['invoke_type'] = BittrexMethods.SUBSCRIBE_TO_SUMMARY_DELTAS
@@ -183,41 +284,43 @@ class BittrexSocket(WebSocket):
                 msg['invoke_type'] = BittrexMethods.SUBSCRIBE_TO_SUMMARY_LITE_DELTAS
         else:
             msg['invoke_type'] = BittrexMethods.SUBSCRIBE_TO_EXCHANGE_DELTAS
-        await self.on_public(msg)
+        self._on_public_callback.on_change(msg)
 
-    async def _on_private(self, args):
-        msg = await process_message(args[0])
-        await self.on_private(msg)
+    def _on_private(self, args):
+        self._on_private_callback.on_change(process_message(args))
 
-    async def _on_debug(self, **kwargs):
+    def _on_debug(self, **kwargs):
+        if self.connection.conn.started is False:
+            self.connection.conn.started = True
         # `QueryExchangeState`, `QuerySummaryState` and `GetAuthContext` are received in the debug channel.
-        await self._is_query_invoke(kwargs)
+        self._is_query_invoke(kwargs)
 
-    async def _is_query_invoke(self, kwargs):
+    def _is_query_invoke(self, kwargs):
         if 'R' in kwargs and type(kwargs['R']) is not bool:
             invoke = self.invokes[int(kwargs['I'])]['invoke']
             if invoke == BittrexMethods.GET_AUTH_CONTENT:
-                signature = await create_signature(self.credentials['api_secret'], kwargs['R'])
+                signature = create_signature(self.credentials['api_secret'], kwargs['R'])
                 event = SubscribeEvent(BittrexMethods.AUTHENTICATE, self.credentials['api_key'], signature)
                 self.control_queue.put(event)
             else:
-                msg = await process_message(kwargs['R'])
+                msg = process_message(kwargs['R'])
                 if msg is not None:
                     msg['invoke_type'] = invoke
-                    msg['ticker'] = self.invokes[int(kwargs['I'])].get('ticker')
-                    await self.on_public(msg)
+                    # Assign ticker name before Bittrex fixes that payload
+                    msg['ticker'] = self.invokes[int(kwargs['I'])]['ticker']
+                    self._on_public_callback.on_change(msg)
 
     # ======================
     # Public Channel Methods
     # ======================
 
-    async def on_public(self, msg):
+    def on_public(self, msg):
         pass
 
-    async def on_private(self, msg):
+    def on_private(self, msg):
         pass
 
-    async def on_error(self, args):
+    def on_error(self, args):
         logger.error(args)
 
     # =============

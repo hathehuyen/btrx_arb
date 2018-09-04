@@ -1,38 +1,30 @@
-from bittrex_websocket.websocket_client import BittrexSocket
 from time import sleep
+from bittrex_websocket import OrderBook
+import json
+
 
 def main():
-    class MySocket(BittrexSocket):
+    class MySocket(OrderBook):
+        def on_ping(self, msg):
+            pass
+            # print('Received order book update for {}'.format(msg))
 
-        async def on_public(self, msg):
-            name = msg['M']
-            if name not in ticker_updates_container:
-                ticker_updates_container[name] = msg
-                print('Just received market update for {}.'.format(name))
-
-    # Create container
-    ticker_updates_container = {}
     # Create the socket instance
     ws = MySocket()
     # Enable logging
     ws.enable_log()
     # Define tickers
-    tickers = ['BTC-ETH', 'BTC-NEO', 'BTC-ZEC', 'ETH-NEO', 'ETH-ZEC']
-    # Subscribe to ticker information
-    for ticker in tickers:
-        sleep(0.01)
-        ws.subscribe_to_exchange_deltas([ticker])
+    tickers = ['BTC-ETH']
+    # Subscribe to order book updates
+    ws.subscribe_to_orderbook(tickers)
 
-    # Users can also subscribe without introducing delays during invoking but
-    # it is the recommended way when you are subscribing to a large list of tickers.
-    # ws.subscribe_to_exchange_deltas(tickers)
-
-    while len(ticker_updates_container) < len(tickers):
+    while True:
         sleep(1)
+        book = ws.get_order_book('BTC-ETH')
+        print(json.dumps(book))
     else:
-        print('We have received updates for all tickers. Closing...')
-        ws.disconnect()
-        sleep(10)
+        print('Quit')
+        sleep(5)
 
 
 if __name__ == "__main__":

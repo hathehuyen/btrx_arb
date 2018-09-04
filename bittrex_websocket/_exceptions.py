@@ -1,8 +1,18 @@
-#!/usr/bin/python
-# -*- coding: utf-8 -*-
+from requests.exceptions import HTTPError, MissingSchema, ConnectionError
+from urllib3.contrib.pyopenssl import SocketError
+from urllib3.exceptions import TimeoutError as TimeoutErrorUrlLib
+from websocket import WebSocketConnectionClosedException, WebSocketBadStatusException, WebSocketTimeoutException
 
-# bittrex_websocket/_exceptions.py
-# Stanislav Lazarov
+try:
+    class TimeoutError(TimeoutError):
+        def __init__(self):
+            super(TimeoutError, self).__init__()
 
-from websockets.exceptions import ConnectionClosed, InvalidStatusCode
-from requests.exceptions import ConnectionError
+except NameError:
+    class TimeoutError(Exception):
+        def __init__(self):
+            super(TimeoutError, self).__init__()
+
+
+class WebSocketConnectionClosedByUser(Exception):
+    pass
