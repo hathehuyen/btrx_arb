@@ -108,6 +108,7 @@ def find_diff(triangulars, ob: MyOrderBook):
         currency3 = (currency2 - currency2 * fee) / pair2_sell_price
         currency = (currency3 - currency3 * fee) * pair3_buy_price
         if currency - currency1 > 0:
+
             print(triangular, 'buy->buy->sell')
             print(currency-currency1)
         # buy sell sell

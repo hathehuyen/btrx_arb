@@ -4,3 +4,4 @@ signalr-client-threads
 websocket-client==0.48.0
 requests[security]==2.18.4
 Events==0.3
+grequests
