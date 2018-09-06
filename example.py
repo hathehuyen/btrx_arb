@@ -208,6 +208,9 @@ def main_loop():
                 if not check_min_size(market_raw, triangular, [quantity_pair1, quantity_pair2, quantity_pair3]):
                     print('Size too small')
                     continue
+                if price_pair1 * quantity_pair1 < 0.0011:
+                    print('Min trade requirement not meet (< 0.0011)')
+                    continue
 
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency2, price_pair1, quantity_pair1))
                 rs = bittrex_api.buylimit('{0}-{1}'.format(currency1, currency2), quantity_pair1, price_pair1)
@@ -248,6 +251,9 @@ def main_loop():
 
                 if not check_min_size(market_raw, triangular, [quantity_pair1, quantity_pair2, quantity_pair3]):
                     print('Size too small')
+                    continue
+                if price_pair3 * quantity_pair3 < 0.0011:
+                    print('Min trade requirement not meet (< 0.0011)')
                     continue
 
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency3, price_pair3, quantity_pair3))
