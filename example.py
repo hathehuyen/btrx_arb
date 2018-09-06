@@ -168,7 +168,6 @@ def main_loop():
     balances = bittrex_api.getbalances()
 
     while True:
-        sleep(1)
         order, triangular, prices, quantities = find_diff(triangulars, ob)
         if order:
             currency1 = triangular[0]
@@ -272,8 +271,11 @@ def main_loop():
                 rs = bittrex_api.selllimit('{0}-{1}'.format(currency1, currency2), quantity_pair1, price_pair1)
                 print(rs)
 
-        sys.stdout.write('.')
-        sys.stdout.flush()
+        # sys.stdout.write(':')
+        # sys.stdout.flush()
+        sleep(0.1)
+        # sys.stdout.write('\b')
+        # sys.stdout.flush()
 
 
 if __name__ == "__main__":
