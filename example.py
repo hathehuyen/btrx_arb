@@ -213,7 +213,8 @@ def main_loop():
                 bittrex_api.buylimit('{0}-{1}'.format(currency1, currency2), quantity_pair1, price_pair1)
 
                 balances = bittrex_api.getbalances()
-                quantity_pair2 = find_balance(balances, currency2)
+                balance_currency2 = find_balance(balances, currency2)
+                quantity_pair2 = (balance_currency2 - balance_currency2 * settings.fee ) / price_pair2
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency2, currency3, price_pair2, quantity_pair2))
                 bittrex_api.buylimit('{0}-{1}'.format(currency2, currency3), quantity_pair2, price_pair2)
 
