@@ -1,8 +1,10 @@
 from time import sleep
 from bittrex_websocket import OrderBook
+from bittrex_api import BittrexAPI
 import requests
 import json
 import sys
+import settings
 
 
 market_url = "https://bittrex.com/api/v1.1/public/getmarkets"
@@ -48,8 +50,6 @@ def get_markets():
 
 
 def find_triangular(markets, base_currency: list=['USD', 'USDT', 'BTC']):
-    # for m in markets:
-    #     print(m)
     triangulars = []
     for m in markets:
         if m in base_currency:
@@ -80,7 +80,7 @@ def find_market_to_watch(triangulars):
 def find_diff(triangulars, ob: MyOrderBook):
     tickers = find_market_to_watch(triangulars)
     orderbooks = {}
-    fee = 0.0025
+    fee = settings.fee
     for ticker in tickers:
         orderbooks[ticker] = ob.get_order_book(ticker)
     for triangular in triangulars:
@@ -107,34 +107,95 @@ def find_diff(triangulars, ob: MyOrderBook):
         currency2 = (currency1 - currency1 * fee) / pair1_sell_price
         currency3 = (currency2 - currency2 * fee) / pair2_sell_price
         currency = (currency3 - currency3 * fee) * pair3_buy_price
-        if currency - currency1 > 0:
-
+        if currency - currency1 > settings.min_profit_pct:
             print(triangular, 'buy->buy->sell')
             print(currency-currency1)
+            return 'buy-buy-sell', triangular, [pair1_sell_price, pair2_sell_price, pair3_buy_price], \
+                   [pair1_sell_quantity, pair2_sell_quantity, pair3_buy_quantity]
         # buy sell sell
         currency1 = 1
         currency3 = (currency1 - currency1 * fee) / pair3_sell_price
         currency2 = (currency3 - currency3 * fee) * pair2_buy_price
         currency = (currency2 - currency2 * fee) * pair1_buy_price
-        if currency - currency1 > 0:
+        if currency - currency1 > settings.min_profit_pct:
             print(triangular, 'sell->sell->buy')
             print(currency-currency1)
+            return 'buy-sell-sell', triangular, [pair3_sell_price, pair2_buy_price, pair1_buy_price], \
+                   [pair3_sell_quantity, pair2_buy_quantity, pair1_buy_quantity]
         # sys.stdout.write('.')
         # sys.stdout.flush()
+    return False, False, False, False
+
+
+def find_balance(balances, currency):
+    for balance in balances:
+        if balance['Currency'] == currency:
+            return balance['Available']
+    return 0
+
+def main_loop():
+    market = get_markets()
+    triangulars = find_triangular(market, ['USD', 'USDT', 'BTC'])
+    # print(triangulars)
+    tickers = find_market_to_watch(triangulars)
+    ob = MyOrderBook(tickers=tickers)
+    bittrex_api = BittrexAPI(settings.api_key, settings.api_secret)
+    balances = bittrex_api.getbalances()
+
+    while True:
+        sleep(1)
+        order, triangular, prices, quantities = find_diff(triangulars, ob)
+        if order:
+            currency1 = triangular[0]
+            currency2 = triangular[1]
+            currency3 = triangular[2]
+            price_pair1 = prices[0]
+            price_pair2 = prices[1]
+            price_pair3 = prices[2]
+            quantity_pair1 = quantities[0]
+            quantity_pair2 = quantities[1]
+            quantity_pair3 = quantities[2]
+
+            if order == 'buy-buy-sell':
+                balance_currency1 = find_balance(balances, currency1)
+                balance_currency2 = (balance_currency1 - balance_currency1 * settings.fee) / price_pair1
+                if balance_currency2 > quantity_pair1:
+                    balance_currency2 = quantity_pair1
+                else:
+                    quantity_pair1 = balance_currency2
+                balance_currency3 = (balance_currency2 - balance_currency2 * settings.fee) / price_pair2
+
+                if balance_currency3 > quantity_pair2:
+                    balance_currency3 = quantity_pair2
+                    balance_currency2 = balance_currency3 * price_pair2
+                    balance_currency2 += balance_currency2 * settings.fee
+                    quantity_pair1 = balance_currency2
+                else:
+                    quantity_pair2 = balance_currency3
+
+                if quantity_pair3 < balance_currency3:
+                    balance_currency3 = quantity_pair3
+                    quantity_pair2 = balance_currency3
+                    quantity_pair1 = quantity_pair2 * price_pair2
+                else:
+                    quantity_pair3 = balance_currency3
+
+                print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency2, price_pair1, quantity_pair1))
+                # balances = bittrex_api.getbalances()
+                # if find_balance(balances, currency2) < balance_currency2:
+                #     balance_currency2 = find_balance(balances, currency2)
+                print('buy {0}-{1}, price {2}, quantity {3}'.format(currency2, currency3, price_pair2, quantity_pair2))
+                # balances = bittrex_api.getbalances()
+                # balance_currency3 = find_balance(balances, currency3)
+                # if price_pair3 * quantity_pair3 > balance_currency2 - balance_currency2 * settings.fee:
+                #     quantity_pair2 = (balance_currency2 - balance_currency2 * settings.fee) / price_pair2
+                print('sell {0}-{1}, price {2}, quantity {3}'.format(currency1, currency3, price_pair3, quantity_pair3))
+
+        sys.stdout.write('.')
+        sys.stdout.flush()
 
 
 if __name__ == "__main__":
-    # main()
-    market = get_markets()
-    triangulars = find_triangular(market, ['USD', 'USDT', 'BTC'])
-    print(triangulars)
-    tickers = find_market_to_watch(triangulars)
-    ob = MyOrderBook(tickers=tickers)
-    while True:
-        sleep(1)
-        find_diff(triangulars, ob)
-        sys.stdout.write('.')
-        sys.stdout.flush()
-        # book = ob.get_order_book('USDT-ETH')
-        # print(json.dumps(book))
+    main_loop()
+
 

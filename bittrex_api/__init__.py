@@ -1,213 +1,107 @@
-"""
-    All trades have a 0.25% commission. -> real case it is 0.250626606% so use 0.26% for calculation instead
-"""
-
-import grequests
+from urllib.parse import urlencode
+import urllib.request
+import json
+import time
 import hmac
 import hashlib
-import time
-from abc import ABCMeta, abstractmethod
 
 
-class ExchangeEngineBase:
-    __metaclass__ = ABCMeta
+class BittrexAPI(object):
+    
+    def __init__(self, key, secret):
+        self.key = key
+        self.secret = secret
+        self.public = ['getmarkets', 'getcurrencies', 'getticker', 'getmarketsummaries', 'getmarketsummary', 'getorderbook', 'getmarkethistory']
+        self.market = ['buylimit', 'buymarket', 'selllimit', 'sellmarket', 'cancel', 'getopenorders']
+        self.account = ['getbalances', 'getbalance', 'getdepositaddress', 'withdraw', 'getorder', 'getorderhistory', 'getwithdrawalhistory', 'getdeposithistory']
 
-    @abstractmethod
-    def __init__(self):
-        pass
-
-    @abstractmethod
-    def _send_request(self):
-        pass
-
-    @abstractmethod
-    def place_order(self, ticker, action, amount, price):
-        pass
-
-    @abstractmethod
-    def get_balance(self):
-        pass
-
-    # @abstractmethod
-    def get_ticker_history(self, ticker):
-        pass
-
-    '''
-    Format: e.g. {'exchange': 'gatecoin', 'ticker': 'BTCHKD', 'data': [{price: (int)30.5}]}
-    '''
-
-    # @abstractmethod
-    def parseTickerData(self, tickerData):
-        pass
-
-
-class BittrexAPI(ExchangeEngineBase):
-    def __init__(self, api_key, api_secret):
-        super().__init__()
-        self.API_URL = 'https://bittrex.com/api'
-        self.apiVersion = 'v1.1'
-        self.sleepTime = 5
-        self.feeRatio = 0.0026
-        self.async = True
-        self.api_key = api_key
-        self.api_secret = api_secret
-
-    def _send_request(self, command, httpMethod, params={}, hook=None):
-        command = '/{0}/{1}'.format(self.apiVersion, command)
-
-        url = self.API_URL + command
-
-        if httpMethod == "GET":
-            R = grequests.get
-        elif httpMethod == "POST":
-            R = grequests.post
-
-        headers = {}
-
-        if not any(x in command for x in ['Public', 'public']):
-            nonce = str(int(1000 * time.time()))
-            url = url + '{0}apikey={1}&nonce={2}'.format('&' if '?' in url else '?', self.api_key, nonce)
-
-            secret = self.api_secret
-
-            signature = hmac.new(secret.encode('utf8'), url.encode('utf8'), hashlib.sha512)
-            signature = signature.hexdigest()
-
-            headers = {
-                'apisign': signature,
-            }
-
-        args = {'data': params, 'headers': headers}
-        if hook:
-            args['hooks'] = dict(response=hook)
-
-        req = R(url, **args)
-
-        if self.async:
-            return req
+    def query(self, method, values={}):
+        if method in self.public:
+            url = 'https://bittrex.com/api/v1.1/public/'
+        elif method in self.market:
+            url = 'https://bittrex.com/api/v1.1/market/'
+        elif method in self.account: 
+            url = 'https://bittrex.com/api/v1.1/account/'
         else:
-            response = grequests.map([req])[0].json()
-
-            if 'error' in response:
-                print(response)
-            return response
-
-    '''
-        return in r.parsed, showing all and required tickers
-        {
-            'ETH': 0.005,
-            'OMG': 0
-        }
-    '''
-
-    def get_balance(self, tickers=[]):
-        return self._send_request('account/getbalances', 'GET', {}, [self.hook_getBalance(tickers=tickers)])
-
-    def hook_getBalance(self, *factory_args, **factory_kwargs):
-        def res_hook(r, *r_args, **r_kwargs):
-            json = r.json()
-            r.parsed = {}
-
-            if factory_kwargs['tickers']:
-                json['result'] = filter(lambda ticker: ticker['Currency'].upper() in factory_kwargs['tickers'],
-                                        json['result'])
-
-            for ticker in json['result']:
-                r.parsed[ticker['Currency'].upper()] = float(ticker['Available'])
-
-        return res_hook
-
-    '''
-        return USDT in r.parsed
-        {
-            'BTC': 18000    
-        }
-    '''
-
-    def get_ticker_lastPrice(self, ticker):
-        return self._send_request('public/getticker?market=USDT-{0}'.format(ticker), 'GET', {},
-                                  [self.hook_lastPrice(ticker=ticker)])
-
-    def hook_lastPrice(self, *factory_args, **factory_kwargs):
-        def res_hook(r, *r_args, **r_kwargs):
-            json = r.json()
-            r.parsed = {}
-            r.parsed[factory_kwargs['ticker']] = json['result']['Last']
-
-        return res_hook
-
-    '''
-        return in r.parsed
-        {
-            'bid': {
-                'price': 0.02202,
-                'amount': 1103.5148
-            },
-            'ask': {
-                'price': 0.02400,
-                'amount': 103.2
-            },           
-        }
-    '''
-
-    def get_ticker_orderBook_innermost(self, ticker):
-        return self._send_request('public/getorderbook?type=both&market={0}'.format(ticker), 'GET', {},
-                                  self.hook_orderBook)
-
-    def hook_orderBook(self, r, *r_args, **r_kwargs):
-        json = r.json()
-        # print json
-        r.parsed = {
-            'bid': {
-                'price': float(json['result']['buy'][0]['Rate']),
-                'amount': float(json['result']['buy'][0]['Quantity'])
-            },
-            'ask': {
-                'price': float(json['result']['sell'][0]['Rate']),
-                'amount': float(json['result']['sell'][0]['Quantity'])
-            }
-        }
-
-    '''
-        return in r.parsed
-        [
-            {
-                'orderId': 1242424
-            }
-        ]
-    '''
-
-    def get_open_order(self):
-        return self._send_request('market/getopenorders', 'GET', {}, self.hook_openOrder)
-
-    def hook_openOrder(self, r, *r_args, **r_kwargs):
-        json = r.json()
-        r.parsed = []
-        for order in json['result']:
-            r.parsed.append({'orderId': str(order['OrderUuid']), 'created': order['Opened']})
-
-    '''
-        ticker: 'ETH-ETC'
-        action: 'bid' or 'ask'
-        amount: 700
-        price: 0.2
-    '''
-
-    def place_order(self, ticker, action, amount, price):
-        action = 'buy' if action == 'bid' else 'sell'
-        if action == 'buy':
-            cmd = 'market/buylimit?market={0}&quantity={1}&rate={2}'.format(ticker, amount, price)
+            return 'Something went wrong, sorry.'
+        
+        url += method + '?' + urlencode(values)
+        
+        if method not in self.public:
+            url += '&apikey=' + self.key
+            url += '&nonce=' + str(int(time.time()))
+            signature = hmac.new(self.secret.encode('utf-8'), url.encode('utf-8'), hashlib.sha512).hexdigest()
+            headers = {'apisign': signature}
         else:
-            cmd = 'market/selllimit?market={0}&quantity={1}&rate={2}'.format(ticker, amount, price)
-        return self._send_request(cmd, 'GET')
+            headers = {}
+        
+        req = urllib.request.Request(url, headers=headers)
+        response = json.loads(urllib.request.urlopen(req).read())
+        
+        if response["result"]:
+            return response["result"]
+        else:
+            return response["message"]
 
-    def cancel_order(self, orderID):
-        return self._send_request('market/cancel?uuid={0}'.format(orderID), 'GET')
-
-    def withdraw(self, ticker, amount, address):
-        return self._send_request(
-            'account/withdraw?currency={0}&quantity={1}&address={2}'.format(ticker, amount, address), 'GET')
-
-
-if __name__ == "__main__":
-    pass
+    def getmarkets(self):
+        return self.query('getmarkets')
+    
+    def getcurrencies(self):
+        return self.query('getcurrencies')
+    
+    def getticker(self, market):
+        return self.query('getticker', {'market': market})
+    
+    def getmarketsummaries(self):
+        return self.query('getmarketsummaries')
+    
+    def getmarketsummary(self, market):
+        return self.query('getmarketsummary', {'market': market})
+    
+    def getorderbook(self, market, type, depth=20):
+        return self.query('getorderbook', {'market': market, 'type': type, 'depth': depth})
+    
+    def getmarkethistory(self, market, count=20):
+        return self.query('getmarkethistory', {'market': market, 'count': count})
+    
+    def buylimit(self, market, quantity, rate):
+        return self.query('buylimit', {'market': market, 'quantity': quantity, 'rate': rate})
+    
+    def buymarket(self, market, quantity):
+        return self.query('buymarket', {'market': market, 'quantity': quantity})
+    
+    def selllimit(self, market, quantity, rate):
+        return self.query('selllimit', {'market': market, 'quantity': quantity, 'rate': rate})
+    
+    def sellmarket(self, market, quantity):
+        return self.query('sellmarket', {'market': market, 'quantity': quantity})
+    
+    def cancel(self, uuid):
+        return self.query('cancel', {'uuid': uuid})
+    
+    def getopenorders(self, market):
+        return self.query('getopenorders', {'market': market})
+    
+    def getbalances(self):
+        return self.query('getbalances')
+    
+    def getbalance(self, currency):
+        return self.query('getbalance', {'currency': currency})
+    
+    def getdepositaddress(self, currency):
+        return self.query('getdepositaddress', {'currency': currency})
+    
+    def withdraw(self, currency, quantity, address):
+        return self.query('withdraw', {'currency': currency, 'quantity': quantity, 'address': address})
+    
+    def getorder(self, uuid):
+        return self.query('getorder', {'uuid': uuid})
+    
+    def getorderhistory(self, market, count):
+        return self.query('getorderhistory', {'market': market, 'count': count})
+    
+    def getwithdrawalhistory(self, currency, count):
+        return self.query('getwithdrawalhistory', {'currency': currency, 'count': count})
+    
+    def getdeposithistory(self, currency, count):
+        return self.query('getdeposithistory', {'currency': currency, 'count': count})
