@@ -140,8 +140,7 @@ def main_loop():
     tickers = find_market_to_watch(triangulars)
     ob = MyOrderBook(tickers=tickers)
     bittrex_api = BittrexAPI(settings.api_key, settings.api_secret)
-    # balances = bittrex_api.getbalances()
-    balances = 1
+    balances = bittrex_api.getbalances()
 
     while True:
         sleep(1)
@@ -158,7 +157,8 @@ def main_loop():
             quantity_pair3 = quantities[2]
 
             if order == 'buy-buy-sell':
-                balance_currency1 = find_balance(balances, currency1)
+                # balance_currency1 = find_balance(balances, currency1)
+                balance_currency1 = 1
                 balance_currency2 = (balance_currency1 - balance_currency1 * settings.fee) / price_pair1
                 if balance_currency2 > quantity_pair1:
                     balance_currency2 = quantity_pair1
