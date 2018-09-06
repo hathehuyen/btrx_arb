@@ -37,16 +37,20 @@ def get_markets():
                 base_currency = market['BaseCurrency']
                 market_currency = market['MarketCurrency']
                 # market_name = market['MarketName']
+                # min_trade_size = market['MinTradeSize']
                 active = market['IsActive']
                 if active:
                     if base_currency not in rs:
                         rs[base_currency] = []
                     else:
                         rs[base_currency].append(market_currency)
+
             # print(json.dumps(rs))
-            return rs
+            return rs, markets
+        return False, False
     except Exception as ex:
         print(ex)
+        return False, False
 
 
 def find_triangular(markets, base_currency: list=['USD', 'USDT', 'BTC']):
@@ -133,8 +137,29 @@ def find_balance(balances, currency):
             return balance['Available']
     return 0
 
+
+def check_min_size(markets, triangular, quantities):
+    currency1 = triangular[0]
+    currency2 = triangular[1]
+    currency3 = triangular[2]
+    quantity_pair1 = quantities[0]
+    quantity_pair2 = quantities[1]
+    quantity_pair3 = quantities[2]
+    pair1 = '{0}-{1}'.format(currency1, currency2)
+    pair2 = '{0}-{1}'.format(currency2, currency3)
+    pair3 = '{0}-{1}'.format(currency1, currency3)
+    for market in markets:
+        if market['MarketName'] == pair1 and market['MinTradeSize'] < quantity_pair1:
+            return False
+        if market['MarketName'] == pair2 and market['MinTradeSize'] < quantity_pair2:
+            return False
+        if market['MarketName'] == 3 and market['MinTradeSize'] < quantity_pair3:
+            return False
+    return True
+
+
 def main_loop():
-    market = get_markets()
+    market, market_raw = get_markets()
     triangulars = find_triangular(market, ['BTC'])
     # print(triangulars)
     tickers = find_market_to_watch(triangulars)
@@ -181,6 +206,10 @@ def main_loop():
                 else:
                     quantity_pair3 = balance_currency3
 
+                if not check_min_size(market_raw, triangular, [quantity_pair1, quantity_pair2, quantity_pair3]):
+                    print('Size too small')
+                    continue
+
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency2, price_pair1, quantity_pair1))
                 # balances = bittrex_api.getbalances()
                 # if find_balance(balances, currency2) < balance_currency2:
@@ -213,6 +242,10 @@ def main_loop():
                     quantity_pair3 = balance_currency3
                 else:
                     quantity_pair1 = balance_currency2
+
+                if not check_min_size(market_raw, triangular, [quantity_pair1, quantity_pair2, quantity_pair3]):
+                    print('Size too small')
+                    continue
 
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency3, price_pair3, quantity_pair3))
                 print('sell {0}-{1}, price {2}, quantity {3}'.format(currency2, currency3, price_pair2, quantity_pair2))
