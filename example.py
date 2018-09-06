@@ -118,7 +118,7 @@ def find_diff(triangulars, ob: MyOrderBook):
         currency2 = (currency3 - currency3 * fee) * pair2_buy_price
         currency = (currency2 - currency2 * fee) * pair1_buy_price
         if currency - currency1 > settings.min_profit_pct:
-            print(triangular, 'sell->sell->buy')
+            print(triangular, 'buy->sell->sell')
             print(currency-currency1)
             return 'buy-sell-sell', triangular, [pair3_sell_price, pair2_buy_price, pair1_buy_price], \
                    [pair3_sell_quantity, pair2_buy_quantity, pair1_buy_quantity]
@@ -191,6 +191,32 @@ def main_loop():
                 # if price_pair3 * quantity_pair3 > balance_currency2 - balance_currency2 * settings.fee:
                 #     quantity_pair2 = (balance_currency2 - balance_currency2 * settings.fee) / price_pair2
                 print('sell {0}-{1}, price {2}, quantity {3}'.format(currency1, currency3, price_pair3, quantity_pair3))
+
+            if order == 'buy-sell-sell':
+                # balance_currency1 = find_balance(balances, currency1)
+                balance_currency1 = 1
+                if quantity_pair3 * price_pair3 > balance_currency1 - balance_currency1 * settings.fee:
+                    quantity_pair3 = (balance_currency1 - balance_currency1 * settings.fee) / price_pair3
+                balance_currency3 = quantity_pair3
+
+                if quantity_pair2 < quantity_pair3:
+                    quantity_pair3 = quantity_pair2
+                else:
+                    quantity_pair2 = quantity_pair3
+                balance_currency2 = (balance_currency3 - balance_currency3 * settings.fee) * price_pair2
+
+                if quantity_pair1 < balance_currency2:
+                    balance_currency2 = quantity_pair1
+                    quantity_pair2 = balance_currency2
+                    balance_currency3 = balance_currency2 / price_pair2
+                    balance_currency3 += balance_currency3 * settings.fee
+                    quantity_pair3 = balance_currency3
+                else:
+                    quantity_pair1 = balance_currency2
+
+                print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency3, price_pair3, quantity_pair3))
+                print('sell {0}-{1}, price {2}, quantity {3}'.format(currency2, currency3, price_pair2, quantity_pair2))
+                print('sell {0}-{1}, price {2}, quantity {3}'.format(currency1, currency2, price_pair1, quantity_pair1))
 
         sys.stdout.write('.')
         sys.stdout.flush()
