@@ -124,8 +124,8 @@ def find_diff(triangulars, ob: MyOrderBook):
         if currency - currency1 > settings.min_profit_pct:
             print(triangular, 'buy->sell->sell')
             print(currency-currency1)
-            return 'buy-sell-sell', triangular, [pair3_sell_price, pair2_buy_price, pair1_buy_price], \
-                   [pair3_sell_quantity, pair2_buy_quantity, pair1_buy_quantity]
+            return 'buy-sell-sell', triangular, [pair1_sell_price, pair2_buy_price, pair3_buy_price], \
+                   [pair1_sell_quantity, pair2_buy_quantity, pair3_buy_quantity]
         # sys.stdout.write('.')
         # sys.stdout.flush()
     return False, False, False, False
