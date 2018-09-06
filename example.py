@@ -180,10 +180,9 @@ def main_loop():
             quantity_pair1 = quantities[0]
             quantity_pair2 = quantities[1]
             quantity_pair3 = quantities[2]
-
+            balance_currency1 = find_balance(balances, currency1)
+            print('{0} balance: {1}'.format(currency1, balance_currency1))
             if order == 'buy-buy-sell':
-                # balance_currency1 = find_balance(balances, currency1)
-                balance_currency1 = 1
                 balance_currency2 = (balance_currency1 - balance_currency1 * settings.fee) / price_pair1
                 if balance_currency2 > quantity_pair1:
                     balance_currency2 = quantity_pair1
@@ -211,19 +210,19 @@ def main_loop():
                     continue
 
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency2, price_pair1, quantity_pair1))
-                # balances = bittrex_api.getbalances()
-                # if find_balance(balances, currency2) < balance_currency2:
-                #     balance_currency2 = find_balance(balances, currency2)
+                bittrex_api.buylimit('{0}-{1}'.format(currency1, currency2), quantity_pair1, price_pair1)
+
+                balances = bittrex_api.getbalances()
+                quantity_pair2 = find_balance(balances, currency2)
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency2, currency3, price_pair2, quantity_pair2))
-                # balances = bittrex_api.getbalances()
-                # balance_currency3 = find_balance(balances, currency3)
-                # if price_pair3 * quantity_pair3 > balance_currency2 - balance_currency2 * settings.fee:
-                #     quantity_pair2 = (balance_currency2 - balance_currency2 * settings.fee) / price_pair2
+                bittrex_api.buylimit('{0}-{1}'.format(currency2, currency3), quantity_pair2, price_pair2)
+
+                balances = bittrex_api.getbalances()
+                quantity_pair3 = find_balance(balances, currency3)
                 print('sell {0}-{1}, price {2}, quantity {3}'.format(currency1, currency3, price_pair3, quantity_pair3))
+                bittrex_api.selllimit('{0}-{1}'.format(currency1, currency3), quantity_pair3, price_pair3)
 
             if order == 'buy-sell-sell':
-                # balance_currency1 = find_balance(balances, currency1)
-                balance_currency1 = 1
                 if quantity_pair3 * price_pair3 > balance_currency1 - balance_currency1 * settings.fee:
                     quantity_pair3 = (balance_currency1 - balance_currency1 * settings.fee) / price_pair3
                 balance_currency3 = quantity_pair3
@@ -248,8 +247,17 @@ def main_loop():
                     continue
 
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency3, price_pair3, quantity_pair3))
+                bittrex_api.buylimit('{0}-{1}'.format(currency1, currency3), quantity_pair3, price_pair3)
+
+                balances = bittrex_api.getbalances()
+                quantity_pair2 = find_balance(balances, currency3)
                 print('sell {0}-{1}, price {2}, quantity {3}'.format(currency2, currency3, price_pair2, quantity_pair2))
+                bittrex_api.selllimit('{0}-{1}'.format(currency2, currency3), quantity_pair2, price_pair2)
+
+                balances = bittrex_api.getbalances()
+                quantity_pair1 = find_balance(balances, currency2)
                 print('sell {0}-{1}, price {2}, quantity {3}'.format(currency1, currency2, price_pair1, quantity_pair1))
+                bittrex_api.selllimit('{0}-{1}'.format(currency1, currency2), quantity_pair1, price_pair1)
 
         sys.stdout.write('.')
         sys.stdout.flush()
