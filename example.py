@@ -135,12 +135,13 @@ def find_balance(balances, currency):
 
 def main_loop():
     market = get_markets()
-    triangulars = find_triangular(market, ['USD', 'USDT', 'BTC'])
+    triangulars = find_triangular(market, ['BTC'])
     # print(triangulars)
     tickers = find_market_to_watch(triangulars)
     ob = MyOrderBook(tickers=tickers)
     bittrex_api = BittrexAPI(settings.api_key, settings.api_secret)
-    balances = bittrex_api.getbalances()
+    # balances = bittrex_api.getbalances()
+    balances = 1
 
     while True:
         sleep(1)
