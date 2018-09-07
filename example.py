@@ -112,8 +112,8 @@ def find_diff(triangulars, ob: MyOrderBook):
         currency3 = (currency2 - currency2 * fee) / pair2_sell_price
         currency = (currency3 - currency3 * fee) * pair3_buy_price
         if currency - currency1 > settings.min_profit_pct:
-            print(triangular, 'buy->buy->sell')
-            print(currency-currency1)
+            # print(triangular, 'buy->buy->sell')
+            # print(currency-currency1)
             return 'buy-buy-sell', triangular, [pair1_sell_price, pair2_sell_price, pair3_buy_price], \
                    [pair1_sell_quantity, pair2_sell_quantity, pair3_buy_quantity]
         # buy sell sell
@@ -122,8 +122,8 @@ def find_diff(triangulars, ob: MyOrderBook):
         currency2 = (currency3 - currency3 * fee) * pair2_buy_price
         currency = (currency2 - currency2 * fee) * pair1_buy_price
         if currency - currency1 > settings.min_profit_pct:
-            print(triangular, 'buy->sell->sell')
-            print(currency-currency1)
+            # print(triangular, 'buy->sell->sell')
+            # print(currency-currency1)
             return 'buy-sell-sell', triangular, [pair1_sell_price, pair2_buy_price, pair3_buy_price], \
                    [pair1_sell_quantity, pair2_buy_quantity, pair3_buy_quantity]
         # sys.stdout.write('.')
@@ -205,11 +205,13 @@ def main_loop():
                     quantity_pair3 = balance_currency3
 
                 if not check_min_size(market_raw, triangular, [quantity_pair1, quantity_pair2, quantity_pair3]):
-                    print('Size too small')
+                    # print('Size too small')
                     continue
                 if price_pair1 * quantity_pair1 < 0.0011:
-                    print('Min trade requirement not meet (< 0.0011)')
+                    # print('Min trade requirement not meet (< 0.0011)')
                     continue
+
+                print(triangular, order)
 
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency2, price_pair1, quantity_pair1))
                 rs = bittrex_api.buylimit('{0}-{1}'.format(currency1, currency2), quantity_pair1, price_pair1)
@@ -249,11 +251,13 @@ def main_loop():
                     quantity_pair1 = balance_currency2
 
                 if not check_min_size(market_raw, triangular, [quantity_pair1, quantity_pair2, quantity_pair3]):
-                    print('Size too small')
+                    # print('Size too small')
                     continue
                 if price_pair3 * quantity_pair3 < 0.0011:
-                    print('Min trade requirement not meet (< 0.0011)')
+                    # print('Min trade requirement not meet (< 0.0011)')
                     continue
+
+                print(triangular, order)
 
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency3, price_pair3, quantity_pair3))
                 rs = bittrex_api.buylimit('{0}-{1}'.format(currency1, currency3), quantity_pair3, price_pair3)
