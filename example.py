@@ -180,7 +180,6 @@ def main_loop():
             quantity_pair2 = quantities[1]
             quantity_pair3 = quantities[2]
             balance_currency1 = find_balance(balances, currency1)
-            print('{0} balance: {1}'.format(currency1, balance_currency1))
             if order == 'buy-buy-sell':
                 balance_currency2 = (balance_currency1 - balance_currency1 * settings.fee) / price_pair1
                 if balance_currency2 > quantity_pair1:
@@ -211,7 +210,8 @@ def main_loop():
                     # print('Min trade requirement not meet (< 0.0011)')
                     continue
 
-                print(triangular, order)
+                print(triangular, order, prices, quantities)
+                print('{0} balance: {1}'.format(currency1, balance_currency1))
 
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency2, price_pair1, quantity_pair1))
                 rs = bittrex_api.buylimit('{0}-{1}'.format(currency1, currency2), quantity_pair1, price_pair1)
@@ -257,7 +257,8 @@ def main_loop():
                     # print('Min trade requirement not meet (< 0.0011)')
                     continue
 
-                print(triangular, order)
+                print(triangular, order, prices, quantities)
+                print('{0} balance: {1}'.format(currency1, balance_currency1))
 
                 print('buy {0}-{1}, price {2}, quantity {3}'.format(currency1, currency3, price_pair3, quantity_pair3))
                 rs = bittrex_api.buylimit('{0}-{1}'.format(currency1, currency3), quantity_pair3, price_pair3)
